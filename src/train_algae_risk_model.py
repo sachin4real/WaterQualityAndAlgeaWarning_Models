@@ -4,7 +4,6 @@ import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
-from sklearn.model_selection import GroupShuffleSplit
 
 from features import load_dataset, resample_15min, add_time_series_features
 
@@ -22,6 +21,27 @@ def build_rf():
     )
 
 
+def time_split_per_tank(df_feat: pd.DataFrame, label_col: str, feature_cols, train_ratio=0.70):
+    df_feat = df_feat.sort_values(["tank_id", "timestamp"]).reset_index(drop=True)
+
+    train_parts, test_parts = [], []
+    for tank, g in df_feat.groupby("tank_id"):
+        n = len(g)
+        cut = int(n * train_ratio)
+        train_parts.append(g.iloc[:cut])
+        test_parts.append(g.iloc[cut:])
+
+    train_df = pd.concat(train_parts, ignore_index=True)
+    test_df = pd.concat(test_parts, ignore_index=True)
+
+    X_train = train_df[feature_cols].astype(float)
+    y_train = train_df[label_col].astype(str)
+    X_test = test_df[feature_cols].astype(float)
+    y_test = test_df[label_col].astype(str)
+
+    return train_df, test_df, X_train, y_train, X_test, y_test
+
+
 def main():
     os.makedirs("artifacts", exist_ok=True)
 
@@ -29,16 +49,14 @@ def main():
     df15 = resample_15min(df)
     df_feat, feature_cols = add_time_series_features(df15)
 
-    X = df_feat[feature_cols].astype(float)
-    y = df_feat["water_status_label"].astype(str)
-    groups = df_feat["tank_id"].astype(str)
+    train_df, test_df, X_train, y_train, X_test, y_test = time_split_per_tank(
+        df_feat, "algae_label", feature_cols, train_ratio=0.70
+    )
 
-    # Tank-wise split
-    gss = GroupShuffleSplit(n_splits=1, test_size=0.33, random_state=42)
-    train_idx, test_idx = next(gss.split(X, y, groups=groups))
-
-    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    print("\n=== Algae Risk Model (RF) ===")
+    print("Train tanks:", sorted(train_df["tank_id"].unique().tolist()))
+    print("Test tanks :", sorted(test_df["tank_id"].unique().tolist()))
+    print(f"Train rows: {len(train_df)} | Test rows: {len(test_df)}")
 
     model = build_rf()
     model.fit(X_train, y_train)
@@ -47,22 +65,22 @@ def main():
     acc = accuracy_score(y_test, pred)
     macro_f1 = f1_score(y_test, pred, average="macro")
 
-    print("\n=== Water Status Model (RF) ===")
-    print("Train tanks:", sorted(groups.iloc[train_idx].unique().tolist()))
-    print("Test tanks :", sorted(groups.iloc[test_idx].unique().tolist()))
     print("\nConfusion matrix:")
     print(confusion_matrix(y_test, pred))
+
     print("\nClassification report:")
-    print(classification_report(y_test, pred, digits=4))
+    print(classification_report(y_test, pred, digits=4, zero_division=0))
+
     print(f"\naccuracy: {acc:.4f}")
     print(f"macro F1: {macro_f1:.4f}")
 
     artifact = {
         "model": model,
         "features": feature_cols,
-        "label_col": "water_status_label",
-        "classes": sorted(y.unique().tolist()),
+        "label_col": "algae_label",
+        "classes": sorted(df_feat["algae_label"].astype(str).unique().tolist()),
         "eval": {"accuracy": float(acc), "macro_f1": float(macro_f1)},
+        "split": {"type": "time_based_per_tank", "train_ratio": 0.70},
     }
 
     joblib.dump(artifact, OUT_PATH)

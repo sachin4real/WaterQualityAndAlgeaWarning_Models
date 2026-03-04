@@ -21,22 +21,13 @@ def build_rf():
     )
 
 
-def main():
-    os.makedirs("artifacts", exist_ok=True)
-
-    df = load_dataset(DATA_PATH)
-    df15 = resample_15min(df)
-    df_feat, feature_cols = add_time_series_features(df15)
-
-    # ✅ important: sort for time split
+def time_split_per_tank(df_feat: pd.DataFrame, label_col: str, feature_cols, train_ratio=0.70):
     df_feat = df_feat.sort_values(["tank_id", "timestamp"]).reset_index(drop=True)
 
-    # ✅ time-based split per tank (train early, test later)
-    train_parts = []
-    test_parts = []
+    train_parts, test_parts = [], []
     for tank, g in df_feat.groupby("tank_id"):
         n = len(g)
-        cut = int(n * 0.70)  # 70% train, 30% test
+        cut = int(n * train_ratio)
         train_parts.append(g.iloc[:cut])
         test_parts.append(g.iloc[cut:])
 
@@ -44,10 +35,23 @@ def main():
     test_df = pd.concat(test_parts, ignore_index=True)
 
     X_train = train_df[feature_cols].astype(float)
-    y_train = train_df["water_status_label"].astype(str)
-
+    y_train = train_df[label_col].astype(str)
     X_test = test_df[feature_cols].astype(float)
-    y_test = test_df["water_status_label"].astype(str)
+    y_test = test_df[label_col].astype(str)
+
+    return train_df, test_df, X_train, y_train, X_test, y_test
+
+
+def main():
+    os.makedirs("artifacts", exist_ok=True)
+
+    df = load_dataset(DATA_PATH)
+    df15 = resample_15min(df)
+    df_feat, feature_cols = add_time_series_features(df15)
+
+    train_df, test_df, X_train, y_train, X_test, y_test = time_split_per_tank(
+        df_feat, "water_status_label", feature_cols, train_ratio=0.70
+    )
 
     print("\n=== Water Status Model (RF) ===")
     print("Train tanks:", sorted(train_df["tank_id"].unique().tolist()))
@@ -65,7 +69,7 @@ def main():
     print(confusion_matrix(y_test, pred))
 
     print("\nClassification report:")
-    print(classification_report(y_test, pred, digits=4))
+    print(classification_report(y_test, pred, digits=4, zero_division=0))
 
     print(f"\naccuracy: {acc:.4f}")
     print(f"macro F1: {macro_f1:.4f}")
