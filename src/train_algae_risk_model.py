@@ -8,7 +8,7 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 from features import load_dataset, resample_15min, add_time_series_features
 
 DATA_PATH = "data/hydroponic_lettuce.csv"
-OUT_PATH = "artifacts/water_status_model.joblib"
+OUT_PATH = "artifacts/algae_risk_model.joblib"
 
 
 def build_rf():
@@ -50,10 +50,10 @@ def main():
     df_feat, feature_cols = add_time_series_features(df15)
 
     train_df, test_df, X_train, y_train, X_test, y_test = time_split_per_tank(
-        df_feat, "water_status_label", feature_cols, train_ratio=0.70
+        df_feat, "algae_label", feature_cols, train_ratio=0.70
     )
 
-    print("\n=== Water Status Model (RF) ===")
+    print("\n=== Algae Risk Model (RF) ===")
     print("Train tanks:", sorted(train_df["tank_id"].unique().tolist()))
     print("Test tanks :", sorted(test_df["tank_id"].unique().tolist()))
     print(f"Train rows: {len(train_df)} | Test rows: {len(test_df)}")
@@ -77,8 +77,8 @@ def main():
     artifact = {
         "model": model,
         "features": feature_cols,
-        "label_col": "water_status_label",
-        "classes": sorted(df_feat["water_status_label"].astype(str).unique().tolist()),
+        "label_col": "algae_label",
+        "classes": sorted(df_feat["algae_label"].astype(str).unique().tolist()),
         "eval": {"accuracy": float(acc), "macro_f1": float(macro_f1)},
         "split": {"type": "time_based_per_tank", "train_ratio": 0.70},
     }
