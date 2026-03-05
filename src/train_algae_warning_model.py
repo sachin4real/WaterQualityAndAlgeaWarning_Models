@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, f1_score, classification_report, con
 from src.features import build_dataset, feature_columns
 
 DATA_PATH = "data/hydroponic_2_tanks_realistic.csv"
-OUT_PATH = "artifacts/water_status_model.joblib"
+OUT_PATH = "artifacts/algae_warning_model.joblib"
 
 def split_by_tank(df: pd.DataFrame, test_size: float = 0.2, seed: int = 42):
     tanks = df["tank_id"].unique().tolist()
@@ -26,19 +26,18 @@ def main():
     raw = pd.read_csv(DATA_PATH)
     df = build_dataset(raw)
 
-    # required label
-    df = df.dropna(subset=["water_status_label"])
-    df["water_status_label"] = df["water_status_label"].astype(str)
+    df = df.dropna(subset=["algae_label"])
+    df["algae_label"] = df["algae_label"].astype(str)
 
     feats = feature_columns()
 
     train_df, test_df, test_tanks = split_by_tank(df)
 
     X_train = train_df[feats]
-    y_train = train_df["water_status_label"]
+    y_train = train_df["algae_label"]
 
     X_test = test_df[feats]
-    y_test = test_df["water_status_label"]
+    y_test = test_df["algae_label"]
 
     clf = RandomForestClassifier(
         n_estimators=500,
@@ -57,8 +56,8 @@ def main():
 
     bundle = {
         "model": clf,
-        "features": feats,                 # IMPORTANT: keep feature names + order
-        "labels": list(clf.classes_),      # class order for probs
+        "features": feats,
+        "labels": list(clf.classes_),
         "metrics": {
             "accuracy": float(acc),
             "macro_f1": float(mf1),
